@@ -10,6 +10,7 @@ import process from 'node:process';
 
 import type {Channel} from './browser.js';
 import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
+import {ensureBrowserbaseConnected} from './browserbase.js';
 import {cliOptions, parseArguments} from './cli.js';
 import {loadIssueDescriptions} from './issue-descriptions.js';
 import {logger, saveLogsToFile} from './logger.js';
@@ -84,8 +85,15 @@ async function getContext(): Promise<McpContext> {
     chromeArgs.push(`--proxy-server=${args.proxyServer}`);
   }
   const devtools = args.experimentalDevtools ?? false;
-  const browser =
-    args.browserUrl || args.wsEndpoint || args.autoConnect
+  const browser = args.browserbaseApiKey
+    ? await ensureBrowserbaseConnected({
+        apiKey: args.browserbaseApiKey,
+        projectId: args.browserbaseProjectId!,
+        sessionId: args.browserbaseSessionId,
+        proxy: args.browserbaseProxy,
+        keepAlive: args.browserbaseKeepAlive,
+      })
+    : args.browserUrl || args.wsEndpoint || args.autoConnect
       ? await ensureBrowserConnected({
           browserURL: args.browserUrl,
           wsEndpoint: args.wsEndpoint,

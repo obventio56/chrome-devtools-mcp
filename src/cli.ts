@@ -241,6 +241,34 @@ export const cliOptions = {
     describe:
       'Exposes a "slim" set of 3 tools covering navigation, script execution and screenshots only. Useful for basic browser tasks.',
   },
+  browserbaseApiKey: {
+    type: 'string',
+    description:
+      'Browserbase API key. Creates a hosted browser session instead of launching or connecting to a local Chrome. Can also be set via BROWSERBASE_API_KEY env variable.',
+    conflicts: ['browserUrl', 'wsEndpoint', 'executablePath', 'autoConnect'],
+  },
+  browserbaseProjectId: {
+    type: 'string',
+    description:
+      'Browserbase project ID (required with --browserbase-api-key). Can also be set via BROWSERBASE_PROJECT_ID env variable.',
+    conflicts: ['browserUrl', 'wsEndpoint', 'executablePath', 'autoConnect'],
+  },
+  browserbaseSessionId: {
+    type: 'string',
+    description:
+      'Reuse an existing Browserbase session instead of creating a new one. Requires --browserbase-api-key.',
+  },
+  browserbaseProxy: {
+    type: 'boolean',
+    description: 'Enable Browserbase proxy for the session.',
+    default: false,
+  },
+  browserbaseKeepAlive: {
+    type: 'boolean',
+    description:
+      'Keep the Browserbase session alive after the MCP server disconnects (skip auto-cleanup).',
+    default: false,
+  },
 } satisfies Record<string, YargsOptions>;
 
 export type ParsedArguments = ReturnType<typeof parseArguments>;
@@ -256,9 +284,25 @@ export function parseArguments(version: string, argv = process.argv) {
         !args.channel &&
         !args.browserUrl &&
         !args.wsEndpoint &&
-        !args.executablePath
+        !args.executablePath &&
+        !args.browserbaseApiKey
       ) {
         args.channel = 'stable';
+      }
+      // Resolve Browserbase config from env if not on CLI
+      if (!args.browserbaseApiKey && process.env['BROWSERBASE_API_KEY']) {
+        args.browserbaseApiKey = process.env['BROWSERBASE_API_KEY'];
+      }
+      if (
+        !args.browserbaseProjectId &&
+        process.env['BROWSERBASE_PROJECT_ID']
+      ) {
+        args.browserbaseProjectId = process.env['BROWSERBASE_PROJECT_ID'];
+      }
+      if (args.browserbaseApiKey && !args.browserbaseProjectId) {
+        throw new Error(
+          '--browserbase-project-id (or BROWSERBASE_PROJECT_ID env) is required when using Browserbase.',
+        );
       }
       return true;
     })

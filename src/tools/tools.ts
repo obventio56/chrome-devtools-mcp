@@ -6,6 +6,7 @@
 
 import type {ParsedArguments} from '../cli.js';
 
+import * as browserbaseTools from './browserbase.js';
 import * as consoleTools from './console.js';
 import * as emulationTools from './emulation.js';
 import * as extensionTools from './extensions.js';
@@ -25,6 +26,7 @@ export const createTools = (args: ParsedArguments) => {
   const rawTools = args.slim
     ? Object.values(slimTools)
     : [
+        ...Object.values(browserbaseTools),
         ...Object.values(consoleTools),
         ...Object.values(emulationTools),
         ...Object.values(extensionTools),
