@@ -130,22 +130,26 @@ function registerCleanup(apiKey: string, ownedSession: boolean): void {
   if (cleanupRegistered) return;
   cleanupRegistered = true;
 
-  const cleanup = () => {
+  const gracefulExit = (signal: string) => {
     if (activeSession && ownedSession) {
-      // Fire-and-forget — process is exiting
-      void closeSession(apiKey, activeSession.id);
+      // Wait for the close request to complete (with a 3s safety timeout)
+      const timeout = setTimeout(() => process.exit(0), 3000);
+      closeSession(apiKey, activeSession.id).finally(() => {
+        clearTimeout(timeout);
+        process.exit(0);
+      });
+    } else {
+      process.exit(0);
     }
   };
 
-  process.on('SIGTERM', () => {
-    cleanup();
-    process.exit(0);
+  process.on('SIGTERM', () => gracefulExit('SIGTERM'));
+  process.on('SIGINT', () => gracefulExit('SIGINT'));
+  process.on('beforeExit', () => {
+    if (activeSession && ownedSession) {
+      void closeSession(apiKey, activeSession.id);
+    }
   });
-  process.on('SIGINT', () => {
-    cleanup();
-    process.exit(0);
-  });
-  process.on('beforeExit', cleanup);
 }
 
 export async function ensureBrowserbaseConnected(
