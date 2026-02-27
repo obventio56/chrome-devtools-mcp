@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+import {getActiveSessionId} from '../browserbase.js';
 import {logger} from '../logger.js';
 import type {McpContext, TextSnapshotNode} from '../McpContext.js';
 import {zod} from '../third_party/index.js';
@@ -338,6 +342,100 @@ export const fillForm = defineTool({
   },
 });
 
+const MAX_REMOTE_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
+
+const MIME_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.tiff': 'image/tiff',
+  '.tif': 'image/tiff',
+  '.bmp': 'image/bmp',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+  '.html': 'text/html',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx':
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.zip': 'application/zip',
+  '.xml': 'application/xml',
+  '.json': 'application/json',
+};
+
+function getMimeType(filePath: string): string {
+  return MIME_TYPES[path.extname(filePath).toLowerCase()] ??
+    'application/octet-stream';
+}
+
+/**
+ * Upload a file to a remote browser by base64-encoding the content and
+ * injecting it into the page via CDP Runtime.callFunctionOn.
+ *
+ * This is necessary because DOM.setFileInputFiles sends file *paths* to the
+ * browser, which doesn't work when the browser runs on a remote host
+ * (Browserbase) that cannot access the local filesystem.
+ */
+async function uploadFileRemote(
+  handle: ElementHandle<HTMLInputElement>,
+  filePath: string,
+): Promise<void> {
+  const fileBuffer = await fs.readFile(filePath);
+  if (fileBuffer.length > MAX_REMOTE_UPLOAD_BYTES) {
+    throw new Error(
+      `File "${path.basename(filePath)}" is ${Math.round(fileBuffer.length / 1024 / 1024)}MB, ` +
+        `which exceeds the ${MAX_REMOTE_UPLOAD_BYTES / 1024 / 1024}MB limit for remote browser uploads.`,
+    );
+  }
+
+  const base64 = fileBuffer.toString('base64');
+  const fileName = path.basename(filePath);
+  const mimeType = getMimeType(filePath);
+
+  const ok = await handle.evaluate(
+    (el: HTMLInputElement, payload: {base64: string; name: string; mimeType: string}) => {
+      try {
+        if (
+          el.tagName?.toLowerCase() !== 'input' ||
+          (el.type ?? '').toLowerCase() !== 'file'
+        ) {
+          return false;
+        }
+        const dt = new DataTransfer();
+        const binaryString = atob(payload.base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], {type: payload.mimeType});
+        const file = new File([blob], payload.name, {
+          type: payload.mimeType,
+          lastModified: Date.now(),
+        });
+        dt.items.add(file);
+        el.files = dt.files;
+        el.dispatchEvent(new Event('input', {bubbles: true}));
+        el.dispatchEvent(new Event('change', {bubbles: true}));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    {base64, name: fileName, mimeType},
+  );
+
+  if (!ok) {
+    throw new Error(
+      'Failed to inject file into the element. The element may not be a <input type="file">.',
+    );
+  }
+}
+
 export const uploadFile = defineTool({
   name: 'upload_file',
   description: 'Upload a file through a provided element.',
@@ -360,23 +458,32 @@ export const uploadFile = defineTool({
       uid,
     )) as ElementHandle<HTMLInputElement>;
     try {
-      try {
-        await handle.uploadFile(filePath);
-      } catch {
-        // Some sites use a proxy element to trigger file upload instead of
-        // a type=file element. In this case, we want to default to
-        // Page.waitForFileChooser() and upload the file this way.
+      if (getActiveSessionId()) {
+        // Remote browser (Browserbase): file paths are not accessible to
+        // the remote host, so we base64-encode the file content and inject
+        // it into the page via JavaScript.
+        await uploadFileRemote(handle, filePath);
+      } else {
+        // Local or externally-connected browser: use the standard
+        // path-based upload via DOM.setFileInputFiles.
         try {
-          const page = context.getSelectedPage();
-          const [fileChooser] = await Promise.all([
-            page.waitForFileChooser({timeout: 3000}),
-            handle.asLocator().click(),
-          ]);
-          await fileChooser.accept([filePath]);
+          await handle.uploadFile(filePath);
         } catch {
-          throw new Error(
-            `Failed to upload file. The element could not accept the file directly, and clicking it did not trigger a file chooser.`,
-          );
+          // Some sites use a proxy element to trigger file upload instead of
+          // a type=file element. In this case, we want to default to
+          // Page.waitForFileChooser() and upload the file this way.
+          try {
+            const page = context.getSelectedPage();
+            const [fileChooser] = await Promise.all([
+              page.waitForFileChooser({timeout: 3000}),
+              handle.asLocator().click(),
+            ]);
+            await fileChooser.accept([filePath]);
+          } catch {
+            throw new Error(
+              `Failed to upload file. The element could not accept the file directly, and clicking it did not trigger a file chooser.`,
+            );
+          }
         }
       }
       if (request.params.includeSnapshot) {
