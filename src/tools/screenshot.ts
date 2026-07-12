@@ -89,7 +89,14 @@ export const screenshot = defineTool({
     if (request.params.filePath) {
       const file = await context.saveFile(screenshot, request.params.filePath);
       response.appendResponseLine(`Saved screenshot to ${file.filename}.`);
-    } else if (screenshot.length >= 2_000_000) {
+    } else if (
+      // SCREENSHOT_TO_FILE=1: always save to a file instead of attaching the
+      // image inline. For harnesses running text-only models: an inline
+      // attachment is invisible to them and only bloats their context, while a
+      // file path can be handed to a separate OCR/vision step.
+      process.env['SCREENSHOT_TO_FILE'] === '1' ||
+      screenshot.length >= 2_000_000
+    ) {
       const {filename} = await context.saveTemporaryFile(
         screenshot,
         `image/${request.params.format}`,
