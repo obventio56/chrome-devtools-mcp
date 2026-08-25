@@ -1,3 +1,10 @@
+
+/**
+ * @license
+ * Copyright 2026 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * Browserbase session management for chrome-devtools-mcp.
  *
@@ -6,9 +13,10 @@
  * process exit / SIGTERM / SIGINT.
  */
 
+import {installLegacyCookieShim} from './cookieShim.js';
+import {logger} from './logger.js';
 import type {Browser, Target} from './third_party/index.js';
 import {puppeteer} from './third_party/index.js';
-import {logger} from './logger.js';
 
 const BROWSERBASE_API = 'https://api.browserbase.com/v1';
 
@@ -36,10 +44,10 @@ function makeTargetFilter() {
     'chrome-untrusted://',
   ]);
   return function targetFilter(target: Target): boolean {
-    if (target.url() === 'chrome://newtab/') return true;
-    if (target.url().startsWith('chrome://inspect')) return true;
+    if (target.url() === 'chrome://newtab/') {return true;}
+    if (target.url().startsWith('chrome://inspect')) {return true;}
     for (const prefix of ignoredPrefixes) {
-      if (target.url().startsWith(prefix)) return false;
+      if (target.url().startsWith(prefix)) {return false;}
     }
     return true;
   };
@@ -127,7 +135,7 @@ async function closeSession(apiKey: string, sessionId: string): Promise<void> {
 }
 
 function registerCleanup(apiKey: string, ownedSession: boolean): void {
-  if (cleanupRegistered) return;
+  if (cleanupRegistered) {return;}
   cleanupRegistered = true;
 
   const gracefulExit = (signal: string) => {
@@ -183,6 +191,8 @@ export async function ensureBrowserbaseConnected(
     targetFilter: makeTargetFilter(),
     defaultViewport: null,
   });
+
+  installLegacyCookieShim(activeBrowser);
 
   logger('Puppeteer connected to Browserbase session');
   return activeBrowser;
