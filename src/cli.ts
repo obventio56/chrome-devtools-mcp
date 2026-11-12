@@ -269,6 +269,12 @@ export const cliOptions = {
       'Keep the Browserbase session alive after the MCP server disconnects (skip auto-cleanup).',
     default: false,
   },
+  browserbaseVerified: {
+    type: 'boolean',
+    description:
+      'Create the Browserbase session with Verified browser fingerprints (browserSettings.verified). Verified sessions use a fixed, Browserbase-managed viewport; pair with --no-category-emulation so viewport/user-agent overrides cannot break the fingerprint.',
+    default: false,
+  },
 } satisfies Record<string, YargsOptions>;
 
 export type ParsedArguments = ReturnType<typeof parseArguments>;

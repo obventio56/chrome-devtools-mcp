@@ -26,6 +26,7 @@ export interface BrowserbaseOptions {
   sessionId?: string;   // Reuse an existing session instead of creating one
   proxy?: boolean;
   keepAlive?: boolean;
+  verified?: boolean;
 }
 
 interface BrowserbaseSession {
@@ -64,6 +65,9 @@ async function createSession(
   }
   if (opts.keepAlive) {
     body.keepAlive = true;
+  }
+  if (opts.verified) {
+    body.browserSettings = {verified: true};
   }
 
   logger('Creating Browserbase session', JSON.stringify(body));

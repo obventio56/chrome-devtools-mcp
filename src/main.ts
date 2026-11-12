@@ -92,6 +92,7 @@ async function getContext(): Promise<McpContext> {
         sessionId: args.browserbaseSessionId,
         proxy: args.browserbaseProxy,
         keepAlive: args.browserbaseKeepAlive,
+        verified: args.browserbaseVerified,
       })
     : args.browserUrl || args.wsEndpoint || args.autoConnect
       ? await ensureBrowserConnected({
